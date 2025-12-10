@@ -12,6 +12,9 @@ public class Tile : MonoBehaviour
     // renderer để đổi màu ô
     public Renderer rend;
 
+    public bool IsWalkable = true;
+    public bool IsOccupied => currentUnit != null;
+
     void Awake()
     {
         // nếu chưa gán sẵn thì tự tìm Renderer trong con (ví dụ TileVisual)
@@ -34,6 +37,27 @@ public class Tile : MonoBehaviour
         if (rend != null)
         {
             rend.material.color = c;
+        }
+    }
+
+    public void SetUnit(Unit unit)
+    {
+        currentUnit = unit;
+    }
+
+    public void ClearUnit(Unit unit)
+    {
+        if (currentUnit == unit)
+        {
+            currentUnit = null;
+        }
+    }
+
+    void OnMouseDown()
+    {
+        if (InputManager.Instance != null)
+        {
+            InputManager.Instance.OnTileClicked(this);
         }
     }
 }

@@ -81,7 +81,7 @@ public class BenchManager : MonoBehaviour
     {
         foreach (Tile t in benchTiles)
         {
-            if (t != null && t.currentUnit == null)
+            if (t != null && !t.IsOccupied)
                 return true;
         }
         return false;
@@ -92,7 +92,7 @@ public class BenchManager : MonoBehaviour
     {
         foreach (Tile t in benchTiles)
         {
-            if (t != null && t.currentUnit == null)
+            if (t != null && !t.IsOccupied)
             {
                 GameObject obj = Instantiate(unitPrefab);
                 Unit unit = obj.GetComponent<Unit>();

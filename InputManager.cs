@@ -21,15 +21,15 @@ public class InputManager : MonoBehaviour
     {
         if (selectedUnit == null) return;
 
-        // Nếu ô trống thì cho unit đi sang
-        if (tile.currentUnit == null)
+        // Nếu ô trống và có thể đi được thì yêu cầu pathfinding
+        if (tile.IsWalkable && !tile.IsOccupied)
         {
-            selectedUnit.SetTile(tile);
+            selectedUnit.RequestMove(tile);
             selectedUnit = null;
         }
         else
         {
-            Debug.Log("Tile has unit already!");
+            Debug.Log("Tile không thể đi tới hoặc đã có unit!");
         }
     }
 }
