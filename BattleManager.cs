@@ -24,36 +24,57 @@
             isBattleActive = false;
         }
 
-        // Gọi hàm này khi bấm nút START
-        public void StartBattle()
+    // Gọi hàm này khi bấm nút START
+    public void StartBattle()
+    {
+        if (isBattleActive) return;
+
+        // Xoá list cũ
+        playerUnits.Clear();
+        enemyUnits.Clear();
+
+        // 1) Spawn đợt quái mới TRƯỚC khi scan Unit trong scene
+        SpawnEnemyWave();
+
+        // 2) Lấy tất cả Unit trong scene
+        Unit[] allUnits = FindObjectsOfType<Unit>();
+
+        // reset cờ isInBattle cho chắc
+        foreach (var u in allUnits)
         {
-            if (isBattleActive) return;
-
-            // xóa danh sách cũ nếu còn
-            playerUnits.Clear();
-            enemyUnits.Clear();
-
-            // thu thập tất cả unit player ĐANG Ở TRÊN BOARD
-            Unit[] allUnits = FindObjectsOfType<Unit>();
-            foreach (var u in allUnits)
-            {
-                if (u.team != Team.Player) continue;
-                if (u.currentTile == null) continue;
-
-                // board của bạn ở z >= 0, bench ở z = -2 → ta loại bench ra
-                if (u.currentTile.transform.position.z < 0f) continue; // đang ở bench
-
-                playerUnits.Add(u);
-            }
-
-            // spawn 1 đợt quái đơn giản
-            SpawnEnemyWave();
-
-            isBattleActive = true;
-            Debug.Log("BẮT ĐẦU COMBAT, playerUnits = " + playerUnits.Count + ", enemyUnits = " + enemyUnits.Count);
+            u.isInBattle = false;
         }
 
-        void SpawnEnemyWave()
+        // 3) Chọn những con thực sự vào trận
+        foreach (var u in allUnits)
+        {
+            if (u.currentTile == null) continue;
+
+            float z = u.currentTile.transform.position.z;
+
+            if (u.team == Team.Player)
+            {
+                // chỉ lấy mấy con đang đứng trên BOARD (không lấy bench)
+                // chỉnh điều kiện này nếu board của bạn ở vùng khác
+                if (z >= 0f)
+                {
+                    playerUnits.Add(u);
+                    u.isInBattle = true;
+                }
+            }
+            else if (u.team == Team.Enemy)
+            {
+                // enemy nào đã spawn thì cho vào trận hết
+                enemyUnits.Add(u);
+                u.isInBattle = true;
+            }
+        }
+
+        isBattleActive = true;
+        Debug.Log($"StartBattle: playerUnits = {playerUnits.Count}, enemyUnits = {enemyUnits.Count}");
+    }
+
+    void SpawnEnemyWave()
         {
             // dùng BoardManager để spawn thẳng lên Tile, không dùng toạ độ world tự random nữa
             BoardManager bm = BoardManager.Instance;
