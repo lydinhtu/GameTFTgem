@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public enum Team
@@ -14,44 +13,57 @@ public class Unit : MonoBehaviour
     public string unitName;
     public Team team;
 
-    [Header("Stats cơ bản")]
-    public float moveSpeed = 4f;        // tốc độ di chuyển
-    public int attackRangeTiles = 1;    // tầm đánh tính theo ô (1 = melee)
-    public float attackCooldown = 1f;   // thời gian giữa 2 đòn đánh
-
-    [Header("Vị trí / chiều cao")]
-    public float heightOffsetY = 0.5f;  // ✅ chỉnh trong Inspector cho tới khi đứng vừa mặt bàn
-
-    [Header("Tham chiếu")]
-    public Tile currentTile;
-
-    // combat đơn giản
+    [Header("Stats")]
     public int hp = 100;
     public int damage = 10;
+    public float attackCooldown = 1f;
+    public int attackRangeTiles = 1;   // 1 = melee, >1 = đánh xa
+    public float moveSpeed = 4f;       // tốc độ di chuyển
+
+    [Header("Vị trí")]
+    public float heightOffsetY = 0.5f; // nâng model lên khỏi mặt tile
+    public Tile currentTile;
 
     float lastAttackTime = -999f;
 
-    // movement
+    // Movement state
     bool isMoving = false;
     Tile moveTargetTile = null;
+    Vector3 moveStartPos;
+    float moveT = 0f;
 
     void Start()
     {
-        // đảm bảo unit đứng đúng trên tile khi spawn
+        // Nếu spawn sẵn trên tile
         if (currentTile != null)
         {
-            Vector3 pos = currentTile.transform.position;
-            pos.y += heightOffsetY;                // ✅ nâng lên theo offset
-            transform.position = pos;
-
             currentTile.currentUnit = this;
+            Vector3 pos = currentTile.transform.position;
+            pos.y += heightOffsetY;
+            transform.position = pos;
         }
     }
 
+    /// <summary>
+    /// Đặt unit lên 1 tile (dùng khi spawn / drop từ bench)
+    /// </summary>
     public void SetTile(Tile newTile)
     {
-        if (currentTile != null && currentTile.currentUnit == this)
-            currentTile.currentUnit = null;
+        // Hủy di chuyển & giữ chỗ cũ nếu có
+        if (moveTargetTile != null && moveTargetTile.reservedUnit == this)
+            moveTargetTile.reservedUnit = null;
+
+        isMoving = false;
+        moveTargetTile = null;
+        moveT = 0f;
+
+        if (currentTile != null)
+        {
+            if (currentTile.currentUnit == this)
+                currentTile.currentUnit = null;
+            if (currentTile.reservedUnit == this)
+                currentTile.reservedUnit = null;
+        }
 
         currentTile = newTile;
 
@@ -59,55 +71,94 @@ public class Unit : MonoBehaviour
         {
             newTile.currentUnit = this;
 
-            // ✅ luôn set đúng Y (tile + offset)
             Vector3 pos = newTile.transform.position;
             pos.y += heightOffsetY;
             transform.position = pos;
         }
     }
-
-    void Update()
+    public bool isInBattle = false;
+    void Update()   
     {
-        if (!BattleManager.Instance.isBattleActive)
-            return;
+        if (!isInBattle) return;
+        if (!BattleManager.Instance.isBattleActive) return;
 
+        // đang di chuyển → tiếp tục lerp
         if (isMoving)
         {
             ContinueMove();
             return;
         }
 
-        if (currentTile == null) return;
+        if (currentTile == null)
+            return;
 
+        // 1. Tìm mục tiêu gần nhất
         Unit target = BattleManager.Instance.FindClosestEnemy(this);
         if (target == null || target.currentTile == null) return;
 
+        // 2. Khoảng cách theo ô
         int dx = Mathf.Abs(target.currentTile.x - currentTile.x);
         int dy = Mathf.Abs(target.currentTile.y - currentTile.y);
         int tileDistance = dx + dy;
 
         if (tileDistance <= attackRangeTiles)
         {
+            // 3. Trong tầm → đánh
             TryAttack(target);
         }
         else
         {
-            Tile bestAttackTile = BoardManager.Instance.GetBestAttackTile(this, target);
-            if (bestAttackTile == null)
-                return;
-
-            List<Tile> path = BoardManager.Instance.FindPath(currentTile, bestAttackTile, this);
-            if (path == null || path.Count < 2)
-                return;
-
-            Tile nextTile = path[1];
-
-            if (nextTile.currentUnit != null && nextTile != currentTile)
-                return;
-
-            moveTargetTile = nextTile;
-            isMoving = true;
+            // 4. Ngoài tầm → bước một ô về phía target (có giữ chỗ)
+            MoveOneStepTowards(target);
         }
+    }
+
+    void MoveOneStepTowards(Unit target)
+    {
+        if (currentTile == null || target.currentTile == null) return;
+
+        int dx = target.currentTile.x - currentTile.x;
+        int dy = target.currentTile.y - currentTile.y;
+
+        int stepX = 0;
+        int stepY = 0;
+
+        // Ưu tiên trục xa hơn
+        if (Mathf.Abs(dx) > Mathf.Abs(dy))
+        {
+            stepX = dx > 0 ? 1 : -1;
+        }
+        else if (dy != 0)
+        {
+            stepY = dy > 0 ? 1 : -1;
+        }
+
+        // Nếu dx,dy đều 0 (đề phòng lỗi) thì khỏi đi
+        if (stepX == 0 && stepY == 0)
+            return;
+
+        int newX = currentTile.x + stepX;
+        int newY = currentTile.y + stepY;
+
+        Tile nextTile = BoardManager.Instance.GetTile(newX, newY);
+        if (nextTile == null) return;
+
+        // Ô này có cho mình "đặt chỗ" không?
+        if (!nextTile.CanReserve(this))
+            return;
+
+        // Hủy giữ chỗ cũ nếu có
+        if (moveTargetTile != null && moveTargetTile.reservedUnit == this)
+            moveTargetTile.reservedUnit = null;
+
+        // ĐẶT CHỖ ô mới
+        nextTile.reservedUnit = this;
+
+        // Bắt đầu di chuyển
+        moveTargetTile = nextTile;
+        moveStartPos = transform.position;
+        moveT = 0f;
+        isMoving = true;
     }
 
     void ContinueMove()
@@ -118,19 +169,33 @@ public class Unit : MonoBehaviour
             return;
         }
 
-        // ✅ di chuyển tới vị trí tile + offset Y
         Vector3 targetPos = moveTargetTile.transform.position;
         targetPos.y += heightOffsetY;
 
-        Vector3 currentPos = transform.position;
-        float step = moveSpeed * Time.deltaTime;
-        transform.position = Vector3.MoveTowards(currentPos, targetPos, step);
+        moveT += Time.deltaTime * moveSpeed;
+        float t = Mathf.Clamp01(moveT);
+        transform.position = Vector3.Lerp(moveStartPos, targetPos, t);
 
-        if (Vector3.Distance(transform.position, targetPos) < 0.01f)
+        if (t >= 1f)
         {
-            SetTile(moveTargetTile);
+            // tới nơi → cập nhật tile
+            if (currentTile != null)
+            {
+                if (currentTile.currentUnit == this)
+                    currentTile.currentUnit = null;
+                if (currentTile.reservedUnit == this)
+                    currentTile.reservedUnit = null;
+            }
+
+            currentTile = moveTargetTile;
+            currentTile.currentUnit = this;
+
+            if (currentTile.reservedUnit == this)
+                currentTile.reservedUnit = null;
+
             moveTargetTile = null;
             isMoving = false;
+            moveT = 0f;
         }
     }
 
@@ -141,6 +206,7 @@ public class Unit : MonoBehaviour
 
         lastAttackTime = Time.time;
 
+        // Ở đây bạn có thể thêm animation, spawn effect...
         target.TakeDamage(damage);
     }
 
@@ -155,8 +221,19 @@ public class Unit : MonoBehaviour
 
     void Die()
     {
-        if (currentTile != null && currentTile.currentUnit == this)
-            currentTile.currentUnit = null;
+        // Xóa khỏi tile & reservation
+        if (currentTile != null)
+        {
+            if (currentTile.currentUnit == this)
+                currentTile.currentUnit = null;
+            if (currentTile.reservedUnit == this)
+                currentTile.reservedUnit = null;
+        }
+
+        if (moveTargetTile != null && moveTargetTile.reservedUnit == this)
+        {
+            moveTargetTile.reservedUnit = null;
+        }
 
         BattleManager.Instance.OnUnitDied(this);
         Destroy(gameObject);
