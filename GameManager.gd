@@ -1,181 +1,199 @@
 extends Node3D
 
-# --- KHAI BÁO CÁC MẪU ---
+# --- CẤU HÌNH ---
 var mau_tuong = preload("res://Tuong_Test.tscn")
 var mau_quai = preload("res://Enemy.tscn") 
 
 var tien_vang = 100
-var unit_dang_chon = null 
 var wave_hien_tai = 1 
+var unit_dang_chon = null # Lưu con lính đang chọn
+
+# Node tham chiếu
+@onready var cam = $Camera3D
+@onready var node_hang_cho = $HangCho
+@onready var node_ban_co = $BanCo
 
 func _ready():
-	# 1. Kết nối nút bấm
-	var nut_mua = get_node_or_null("UI/NutMuaLinh")
-	if nut_mua: nut_mua.pressed.connect(_khi_bam_mua_linh)
+	# 1. Kết nối nút Mua Lính
+	if has_node("UI/NutMuaLinh"):
+		$UI/NutMuaLinh.pressed.connect(_khi_bam_mua_linh)
 	
-	var nut_bat_dau = get_node_or_null("UI/NutBatDau")
-	if nut_bat_dau: nut_bat_dau.pressed.connect(_khi_bam_bat_dau)
+	# 2. Kết nối nút Bắt Đầu
+	if has_node("UI/NutBatDau"):
+		$UI/NutBatDau.pressed.connect(_khi_bam_bat_dau)
 	
-	# 2. Đợi kết nối ô đất
-	await get_tree().create_timer(0.5).timeout
-	ket_noi_cac_o()
-	
-	# 3. Sinh quái Wave 1 ngay khi vào game
+	# 3. Sinh quái Wave 1
 	tao_wave_quai(wave_hien_tai)
+	print("🎮 Game đã sẵn sàng! Vàng: ", tien_vang)
 
-# --- XỬ LÝ NÚT BẮT ĐẦU / QUA MÀN ---
+# ==========================================
+# PHẦN 1: XỬ LÝ CLICK & DI CHUYỂN
+# ==========================================
+func _unhandled_input(event):
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var result = ban_tia_raycast(event.position)
+		if result:
+			xu_ly_click(result.collider)
+
+func ban_tia_raycast(mouse_pos):
+	var space_state = get_world_3d().direct_space_state
+	var origin = cam.project_ray_origin(mouse_pos)
+	var end = origin + cam.project_ray_normal(mouse_pos) * 1000
+	var query = PhysicsRayQueryParameters3D.create(origin, end)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	return space_state.intersect_ray(query)
+
+func xu_ly_click(obj):
+	# 1. TÌM NODE GỐC CỦA LÍNH (nếu click vào tay chân, vũ khí...)
+	var unit_check = obj
+	var is_unit = false
+	while unit_check and unit_check != self:
+		if unit_check.has_meta("current_slot"):
+			is_unit = true
+			break
+		unit_check = unit_check.get_parent()
+	
+	# --- TRƯỜNG HỢP 1: CLICK VÀO LÍNH ---
+	if is_unit:
+		# Chỉ tương tác nếu là lính phe mình
+		if unit_check.is_in_group("DongMinh"):
+			
+			# A. Nếu CHƯA chọn ai cả -> Thì chọn con này
+			if unit_dang_chon == null:
+				unit_dang_chon = unit_check
+				print("👉 Đã chọn: ", unit_dang_chon.name)
+				
+			# B. Nếu ĐANG chọn 1 con khác -> Thì đổi chỗ với con này
+			elif unit_dang_chon != unit_check:
+				print("🔄 Phát hiện lính khác -> Thực hiện đổi chỗ")
+				
+				# Lấy cái Slot mà con lính kia đang đứng
+				var slot_cua_linh_kia = unit_check.get_meta("current_slot")
+				
+				# Gọi hàm di chuyển vào cái Slot đó (Hàm di chuyển sẽ tự lo vụ đổi chỗ)
+				di_chuyen_linh(unit_dang_chon, slot_cua_linh_kia)
+				
+				# Đổi xong thì bỏ chọn
+				unit_dang_chon = null
+				
+			# C. Nếu click lại vào chính con đang chọn -> Bỏ chọn
+			else:
+				print("⏹️ Bỏ chọn")
+				unit_dang_chon = null
+		return
+
+	# --- TRƯỜNG HỢP 2: CLICK VÀO Ô ĐẤT TRỐNG ---
+	var slot_check = obj
+	if not (slot_check.name.begins_with("Slot") or slot_check.name.begins_with("Tile")):
+		slot_check = slot_check.get_parent()
+	
+	if slot_check.name.begins_with("Slot") or slot_check.name.begins_with("Tile"):
+		if unit_dang_chon != null:
+			di_chuyen_linh(unit_dang_chon, slot_check)
+			unit_dang_chon = null # Bỏ chọn sau khi di chuyển
+func di_chuyen_linh(unit, target_slot):
+	var old_slot = unit.get_meta("current_slot")
+	
+	# Nếu ô đích đã có lính -> Đổi chỗ
+	if target_slot.has_meta("has_unit"):
+		var unit_tai_dich = target_slot.get_meta("has_unit")
+		if unit_tai_dich != unit:
+			print("🔄 Hoán đổi vị trí!")
+			teleport_to_slot(unit_tai_dich, old_slot)
+			teleport_to_slot(unit, target_slot)
+	else:
+		# Nếu ô đích trống -> Di chuyển
+		print("✅ Di chuyển tới ô trống")
+		old_slot.remove_meta("has_unit")
+		teleport_to_slot(unit, target_slot)
+
+func teleport_to_slot(unit, slot):
+	var vi_tri_moi = slot.global_position
+	
+	unit.global_position = slot.global_position
+	unit.set_meta("current_slot", slot)
+	slot.set_meta("has_unit", unit)
+	
+	if "tren_san_dau" in unit:
+		if slot.name.begins_with("Tile"):
+			unit.tren_san_dau = true 
+		else:
+			unit.tren_san_dau = false
+
+# ==========================================
+# PHẦN 2: MUA LÍNH & TÀI NGUYÊN
+# ==========================================
+func _khi_bam_mua_linh():
+	if tien_vang < 10:
+		print("❌ Không đủ tiền! Cần 10 vàng.")	
+		return
+		
+	var cho_trong = tim_cho_trong_de_mua()
+	if cho_trong:
+		tien_vang -= 10
+		print("💰 Đã mua lính. Vàng còn: ", tien_vang)
+		sinh_linh_moi(cho_trong)
+	else:
+		print("⚠️ Hàng chờ và Bàn cờ đều đã đầy!")
+
+func tim_cho_trong_de_mua():
+	# Ưu tiên tìm hàng chờ (Slot_)
+	for slot in node_hang_cho.get_children():
+		if slot.name.begins_with("Slot") and not slot.has_meta("has_unit"):
+			return slot
+	# Hết chỗ thì tìm bàn cờ (Tile_)
+	for slot in node_ban_co.get_children():
+		if slot.name.begins_with("Tile") and not slot.has_meta("has_unit"):
+			return slot
+	return null
+
+func sinh_linh_moi(slot):
+	var linh = mau_tuong.instantiate()
+	node_ban_co.add_child(linh) # Thêm vào cây
+	linh.add_to_group("DongMinh")
+	teleport_to_slot(linh, slot)
+
+# ==========================================
+# PHẦN 3: LOGIC WAVE & GAMEPLAY
+# ==========================================
 func _khi_bam_bat_dau():
 	var so_luong_quai = get_tree().get_nodes_in_group("KeThu").size()
 	
 	if so_luong_quai > 0:
 		print("⚔️ VÀO TRẬN CHIẾN (Wave ", wave_hien_tai, ")")
+		# Ẩn nút UI
+		if has_node("UI/NutMuaLinh"): $UI/NutMuaLinh.visible = false
+		if has_node("UI/NutBatDau"): $UI/NutBatDau.visible = false
 		
-		# Ẩn nút đi
-		var ui_mua = get_node_or_null("UI/NutMuaLinh")
-		if ui_mua: ui_mua.visible = false
-		var ui_start = get_node_or_null("UI/NutBatDau")
-		if ui_start: ui_start.visible = false
-		
-		# Hô hào đánh nhau
+		# Kích hoạt AI đánh nhau
 		get_tree().call_group("DongMinh", "vao_tran")
 		get_tree().call_group("KeThu", "vao_tran")
-		
 	else:
-		print("🏆 Sang vòng tiếp theo...")
+		print("🏆 Chiến thắng! Sang vòng sau...")
 		wave_hien_tai += 1
-		
-		# Hiện lại nút mua
-		var ui_mua = get_node_or_null("UI/NutMuaLinh")
-		if ui_mua: ui_mua.visible = true
-		
+		if has_node("UI/NutMuaLinh"): $UI/NutMuaLinh.visible = true
 		tao_wave_quai(wave_hien_tai)
 
-# --- HỆ THỐNG SINH QUÁI ---
 func tao_wave_quai(level):
-	print("🐺 Đang triệu hồi quái Wave: ", level)
-	
+	print("🐺 Triệu hồi quái Wave: ", level)
 	if level == 1:
-		sinh_quai_tai_o("Tile_4_7") 
+		sinh_quai("Tile_4_7") 
 	elif level == 2:
-		sinh_quai_tai_o("Tile_3_7")
-		sinh_quai_tai_o("Tile_5_7")
-	elif level == 3:
-		sinh_quai_tai_o("Tile_3_7")
-		sinh_quai_tai_o("Tile_4_7")
-		sinh_quai_tai_o("Tile_5_7")
+		sinh_quai("Tile_3_7")
+		sinh_quai("Tile_5_7")
 	else:
-		sinh_quai_tai_o("Tile_4_8")
+		sinh_quai("Tile_4_7")
+		sinh_quai("Tile_3_7")
+		sinh_quai("Tile_5_7")
 
-func sinh_quai_tai_o(ten_o_dat):
-	var ban_co = get_node_or_null("BanCo")
-	if not ban_co: return
-	var o_dich = ban_co.get_node_or_null(ten_o_dat)
-	
+func sinh_quai(ten_o_dat):
+	var o_dich = node_ban_co.get_node_or_null(ten_o_dat)
 	if o_dich:
 		var quai = mau_quai.instantiate()
 		add_child(quai)
 		quai.add_to_group("KeThu") 
-		quai.rotation_degrees.y = 180 
-		quai.global_position = o_dich.global_position + Vector3(0, 1.5, 0)
+		quai.global_position = o_dich.global_position
 		
-		# [FIX QUAN TRỌNG] Báo cho quái biết là nó đang đứng trên sân
-		# Thêm dòng này vào thì lính mới nhìn thấy quái để đánh!
-		if "tren_san_dau" in quai:
-			quai.tren_san_dau = true 
-
-		print("👹 Quái xuất hiện tại: ", ten_o_dat)
-
-# --- MUA LÍNH ---
-func _khi_bam_mua_linh():
-	if tien_vang < 10: return
-	var hang_cho = get_node("HangCho")
-	var slot_tim_duoc = null
-	
-	for slot in hang_cho.get_children():
-		if "Enemy" in slot.name or not slot.name.begins_with("Slot"): continue
-		if tim_tuong_tai_vi_tri(slot.global_position) == null:
-			slot_tim_duoc = slot
-			break 
-	
-	if slot_tim_duoc:
-		tien_vang -= 10
-		sinh_linh(slot_tim_duoc) 
-
-func sinh_linh(slot_dich):
-	var linh = mau_tuong.instantiate()
-	add_child(linh)
-	linh.add_to_group("DongMinh")
-	# Gửi luôn node slot để lính biết nó đang ở hàng chờ (xoay mặt 0 độ)
-	linh.di_chuyen_den(slot_dich) 
-	linh.input_ray_pickable = true
-
-# --- LOGIC CHỌN & DI CHUYỂN ---
-func chon_tuong(u_moi):
-	if u_moi.dang_chien_dau: return
-	if unit_dang_chon == null:
-		unit_dang_chon = u_moi
-		print("👉 Đã chọn: ", u_moi.name)
-		return
-	if unit_dang_chon == u_moi:
-		unit_dang_chon = null
-		print("⏹️ Bỏ chọn")
-		return
-	if unit_dang_chon != u_moi:
-		thuc_hien_hoan_doi(unit_dang_chon, u_moi)
-		unit_dang_chon = null
-
-# [QUAN TRỌNG] Hàm này đã sửa để gửi NODE ĐẤT thay vì vị trí
-func _khi_click_vao_o(cam, ev, pos, nor, idx, o_dat):
-	if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
-		
-		if unit_dang_chon:
-			var tuong_o_dich = tim_tuong_tai_vi_tri(o_dat.global_position, unit_dang_chon)
-			
-			if tuong_o_dich != null:
-				thuc_hien_hoan_doi(unit_dang_chon, tuong_o_dich)
-			else:
-				# Gửi nguyên cái Node ô đất đi
-				unit_dang_chon.di_chuyen_den(o_dat)
-			
-			unit_dang_chon = null 
-
-func thuc_hien_hoan_doi(unit_1, unit_2):
-	var slot_1 = tim_slot_duoi_chan(unit_1.global_position)
-	var slot_2 = tim_slot_duoi_chan(unit_2.global_position)
-	if slot_1 and slot_2:
-		unit_1.di_chuyen_den(slot_2)
-		unit_2.di_chuyen_den(slot_1)
-
-# --- HÀM PHỤ TRỢ ---
-func ket_noi_cac_o():
-	var tat_ca_cac_o = []
-	if has_node("BanCo"): tat_ca_cac_o.append_array(get_node("BanCo").get_children())
-	if has_node("HangCho"): tat_ca_cac_o.append_array(get_node("HangCho").get_children())
-	
-	for o in tat_ca_cac_o:
-		var body = o.get_node_or_null("StaticBody3D")
-		if not body: body = o.get_node_or_null("Slot_1/StaticBody3D")
-		if body:
-			if body.input_event.is_connected(_khi_click_vao_o):
-				body.input_event.disconnect(_khi_click_vao_o)
-			body.input_event.connect(_khi_click_vao_o.bind(o))
-	print("✅ Đã kết nối xong các ô!")
-
-func tim_tuong_tai_vi_tri(vi_tri_check, tuong_bo_qua = null):
-	var ds_tuong = get_tree().get_nodes_in_group("DongMinh")
-	for tuong in ds_tuong:
-		if tuong == tuong_bo_qua: continue
-		var p1 = Vector2(tuong.global_position.x, tuong.global_position.z)
-		var p2 = Vector2(vi_tri_check.x, vi_tri_check.z)
-		if p1.distance_to(p2) < 0.6: return tuong 
-	return null
-
-func tim_slot_duoi_chan(vi_tri_tuong):
-	var ds_slot = []
-	if has_node("BanCo"): ds_slot.append_array(get_node("BanCo").get_children())
-	if has_node("HangCho"): ds_slot.append_array(get_node("HangCho").get_children())
-	for slot in ds_slot:
-		var p1 = Vector2(slot.global_position.x, slot.global_position.z)
-		var p2 = Vector2(vi_tri_tuong.x, vi_tri_tuong.z)
-		if p1.distance_to(p2) < 0.6: return slot
-	return null
+		# Gán biến để AI nhận diện (Đã có kiểm tra an toàn)
+		if "tren_san_dau" in quai: quai.tren_san_dau = true
