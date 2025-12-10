@@ -1,123 +1,129 @@
-extends Node3D
+extends CharacterBody3D
 
-# --- KHAI BÁO BIẾN ---
-@onready var camera = $Camera3D
-@onready var node_units = $BanCo # Hoặc tạo 1 Node3D con để chứa lính cho gọn
-@onready var hang_cho = $HangCho # Nơi chứa lính dự bị
+# --- CHỈ SỐ SỨC MẠNH ---
+@export var mau_toi_da: int = 100
+var mau_hien_tai: int = 0
+@export var sat_thuong: int = 10
+@export var toc_do_danh: float = 1.0 # Giây/nhát
+@export var toc_do_chay: float = 4.0
+@export var tam_danh: float = 1.5
 
-# Link tới mẫu con lính (Preload file .tscn lính của bạn vào đây)
-var unit_scene = preload("res://Tuong_Test.tscn") 
+# --- TRẠNG THÁI ---
+var dang_chien_dau: bool = false
+var muc_tieu: Node3D = null # Kẻ địch đang nhắm tới
+var thoi_gian_hoi_chieu: float = 0.0
 
-var selected_unit: Node3D = null # Lưu con lính đang được chọn
-var dragging: bool = false # Kiểm tra xem có đang thao tác không
+# Biến để GameManager nhận diện (quan trọng)
+var tren_san_dau: bool = false 
 
-# --- KẾT NỐI UI (NÚT MUA) ---
 func _ready():
-	# Kết nối nút mua lính từ UI (Đảm bảo đường dẫn đúng theo ảnh của bạn)
-	$UI/NutMuaLinh.pressed.connect(_on_nut_mua_linh_pressed)
-
-# --- HÀM 1: MUA LÍNH (SPAWN) ---
-func _on_nut_mua_linh_pressed():
-	# Tìm một slot trống trong Hàng Chờ hoặc Bàn Cờ để đặt
-	var empty_slot = find_empty_slot()
+	mau_hien_tai = mau_toi_da
 	
-	if empty_slot:
-		spawn_unit(empty_slot)
-	else:
-		print("Không còn chỗ trống để mua lính!")
-
-func spawn_unit(slot_target):
-	var new_unit = unit_scene.instantiate()
-	node_units.add_child(new_unit) # Thêm vào Scene
-	
-	# Đặt vị trí lính ngay tại Slot
-	new_unit.global_position = slot_target.global_position
-	
-	# Gắn thông tin: Lính này đang thuộc về Slot nào
-	new_unit.set_meta("current_slot", slot_target)
-	slot_target.set_meta("has_unit", new_unit) # Slot biết nó đang chứa ai
-
-# Hàm phụ: Tìm slot trống (Quét qua các con của HangCho và BanCo)
-func find_empty_slot():
-	# Ưu tiên tìm trong Hàng Chờ trước
-	for slot in hang_cho.get_children():
-		if slot.is_in_group("Slots") and not slot.has_meta("has_unit"):
-			return slot
-	
-	# Nếu hàng chờ đầy, tìm trên Bàn Cờ (Tùy logic game bạn)
-	for slot in $BanCo.get_children():
-		if slot.is_in_group("Slots") and not slot.has_meta("has_unit"):
-			return slot
-	return null
-
-# --- HÀM 2: XỬ LÝ CLICK CHUỘT (RAYCAST) ---
-func _unhandled_input(event):
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var result = raycast_from_mouse(event.position)
+	# Tự động phân loại phe dựa vào Group
+	# Nếu chưa có Group thì tự thêm vào DongMinh (mặc định)
+	if not is_in_group("DongMinh") and not is_in_group("KeThu"):
+		add_to_group("DongMinh")
 		
-		if result:
-			var collider = result.collider
-			handle_click_object(collider)
+	# Tạo thanh máu trên đầu (nếu muốn)
+	tao_thanh_mau_tam_thoi()
 
-# Bắn tia từ Camera để xem chuột click vào cái gì
-func raycast_from_mouse(mouse_pos):
-	var space_state = get_world_3d().direct_space_state
-	var origin = camera.project_ray_origin(mouse_pos)
-	var end = origin + camera.project_ray_normal(mouse_pos) * 1000
-	
-	# Tạo query bắn tia
-	var query = PhysicsRayQueryParameters3D.create(origin, end)
-	query.collide_with_areas = true # Nếu Slot/Lính dùng Area3D
-	query.collide_with_bodies = true # Nếu Slot/Lính dùng StaticBody/CharacterBody
-	
-	return space_state.intersect_ray(query)
-
-# --- HÀM 3: LOGIC CHỌN VÀ DI CHUYỂN ---
-func handle_click_object(obj):
-	# TRƯỜNG HỢP 1: Click vào LÍNH -> Chọn lính đó
-	# (Lưu ý: Nếu lính là CharacterBody, obj sẽ là chính nó. Nếu có nhiều part con, cần check parent)
-	var unit_root = obj
-	while unit_root and not unit_root.is_in_group("Units") and unit_root != self:
-		unit_root = unit_root.get_parent()
-		
-	if unit_root and unit_root.is_in_group("Units"):
-		selected_unit = unit_root
-		print("Đã chọn lính: ", selected_unit.name)
-		# Có thể thêm code đổi màu lính để biết đang chọn
+func _process(delta):
+	# Nếu chưa vào trận hoặc bị chết -> Không làm gì cả
+	if not dang_chien_dau or mau_hien_tai <= 0:
 		return
+	
+	# Hồi chiêu đánh
+	if thoi_gian_hoi_chieu > 0:
+		thoi_gian_hoi_chieu -= delta
 
-	# TRƯỜNG HỢP 2: Click vào SLOT ĐẤT -> Di chuyển hoặc Đổi chỗ
-	if obj.is_in_group("Slots") and selected_unit != null:
-		var target_slot = obj
-		var old_slot = selected_unit.get_meta("current_slot")
+	# 1. Nếu chưa có mục tiêu hoặc mục tiêu đã chết -> Tìm thằng khác
+	if not is_instance_valid(muc_tieu) or muc_tieu.mau_hien_tai <= 0:
+		tim_ke_dich_gan_nhat()
+		return
+	
+	# 2. Tính khoảng cách tới mục tiêu
+	var khoang_cach = global_position.distance_to(muc_tieu.global_position)
+	
+	if khoang_cach > tam_danh:
+		# --- DI CHUYỂN ---
+		# Hướng mặt về phía địch
+		look_at(muc_tieu.global_position, Vector3.UP)
+		rotation.x = 0 # Giữ người thẳng đứng
+		rotation.z = 0
 		
-		# Kiểm tra xem Slot đích có lính chưa
-		if target_slot.has_meta("has_unit"):
-			# -- LOGIC ĐỔI CHỖ (SWAP) --
-			var unit_at_target = target_slot.get_meta("has_unit")
-			
-			if unit_at_target != selected_unit:
-				# 1. Đưa con ở đích về slot cũ
-				unit_at_target.global_position = old_slot.global_position
-				unit_at_target.set_meta("current_slot", old_slot)
-				old_slot.set_meta("has_unit", unit_at_target)
-				
-				# 2. Đưa con đang chọn đến slot đích
-				selected_unit.global_position = target_slot.global_position
-				selected_unit.set_meta("current_slot", target_slot)
-				target_slot.set_meta("has_unit", selected_unit)
-				
-				print("Đã đổi chỗ 2 lính")
-				selected_unit = null # Bỏ chọn
-		else:
-			# -- LOGIC DI CHUYỂN VÀO Ô TRỐNG --
-			# Xóa thông tin ở slot cũ
-			old_slot.remove_meta("has_unit")
-			
-			# Cập nhật vị trí mới
-			selected_unit.global_position = target_slot.global_position
-			selected_unit.set_meta("current_slot", target_slot)
-			target_slot.set_meta("has_unit", selected_unit)
-			
-			print("Đã di chuyển lính")
-			selected_unit = null # Bỏ chọn
+		# Lao tới
+		var huong = (muc_tieu.global_position - global_position).normalized()
+		velocity = huong * toc_do_chay
+		move_and_slide()
+	else:
+		# --- TẤN CÔNG ---
+		velocity = Vector3.ZERO # Đứng lại
+		if thoi_gian_hoi_chieu <= 0:
+			tan_cong_muc_tieu()
+
+# --- HÀM CHIẾN ĐẤU ---
+func vao_tran():
+	if tren_san_dau:
+		dang_chien_dau = true
+		print(name, ": GAAAA! Xông lên!")
+
+func tim_ke_dich_gan_nhat():
+	var nhom_dich = "KeThu" if is_in_group("DongMinh") else "DongMinh"
+	var danh_sach_dich = get_tree().get_nodes_in_group(nhom_dich)
+	
+	var khoang_cach_ngan_nhat = 9999.0
+	var dich_gan_nhat = null
+	
+	for dich in danh_sach_dich:
+		if dich.mau_hien_tai > 0 and dich.tren_san_dau: # Chỉ đánh đứa còn sống và đang trên sân
+			var kc = global_position.distance_to(dich.global_position)
+			if kc < khoang_cach_ngan_nhat:
+				khoang_cach_ngan_nhat = kc
+				dich_gan_nhat = dich
+	
+	muc_tieu = dich_gan_nhat
+
+func tan_cong_muc_tieu():
+	# Reset hồi chiêu
+	thoi_gian_hoi_chieu = toc_do_danh
+	
+	# Animation nhảy lên 1 chút (giả vờ đánh)
+	var tween = create_tween()
+	tween.tween_property(self, "scale", Vector3(1.2, 1.2, 1.2), 0.1)
+	tween.tween_property(self, "scale", Vector3(1, 1, 1), 0.1)
+	
+	print(name, " chém ", muc_tieu.name)
+	
+	# Gây sát thương
+	if muc_tieu.has_method("nhan_sat_thuong"):
+		muc_tieu.nhan_sat_thuong(sat_thuong)
+
+func nhan_sat_thuong(dam):
+	mau_hien_tai -= dam
+	print(name, " bị đau! Máu còn: ", mau_hien_tai)
+	
+	# Cập nhật thanh máu (nếu có)
+	cap_nhat_thanh_mau()
+	
+	if mau_hien_tai <= 0:
+		chet()
+
+func chet():
+	print(name, " đã hy sinh!")
+	# Xóa khỏi game
+	queue_free()
+
+# --- PHỤ TRỢ: THANH MÁU ---
+var label3d_mau: Label3D
+func tao_thanh_mau_tam_thoi():
+	label3d_mau = Label3D.new()
+	label3d_mau.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label3d_mau.position = Vector3(0, 2.5, 0) # Cao hơn đầu 2.5m
+	label3d_mau.text = str(mau_hien_tai)
+	label3d_mau.font_size = 64
+	label3d_mau.modulate = Color.GREEN if is_in_group("DongMinh") else Color.RED
+	add_child(label3d_mau)
+
+func cap_nhat_thanh_mau():
+	if label3d_mau:
+		label3d_mau.text = str(mau_hien_tai)
