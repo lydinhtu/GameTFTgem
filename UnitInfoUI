@@ -1,0 +1,73 @@
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UnitInfoUI : MonoBehaviour
+{
+    [Header("Root")]
+    public GameObject root;   // panel chính, để bật/tắt
+
+    [Header("Components")]
+    public Image portraitImage;
+    public TMP_Text nameText;
+    public TMP_Text hpText;
+    public TMP_Text manaText;
+    public TMP_Text adText;
+    public TMP_Text armorText;
+
+    void Awake()
+    {
+        if (root == null) root = gameObject;
+        Hide();
+    }
+
+    public void Show(Unit u)
+    {
+        if (u == null)
+        {
+            Hide();
+            return;
+        }
+
+        root.SetActive(true);
+
+        // portrait & tên
+        if (u.data != null)
+        {
+            if (portraitImage != null)
+                portraitImage.sprite = u.data.portrait;
+
+            if (nameText != null)
+                nameText.text = u.data.unitName;
+        }
+        else
+        {
+            if (nameText != null)
+                nameText.text = u.unitName;
+        }
+
+        // HP / Mana / AD / Armor
+        if (hpText != null)
+            hpText.text = $"HP: {u.currentHP}/{(u.data ? u.data.maxHP : u.hp)}";
+
+        if (manaText != null)
+        {
+            int maxMana = (u.data != null) ? u.data.maxMana : 100;
+            manaText.text = $"Mana: {u.currentMana}/{maxMana}";
+        }
+
+        if (adText != null)
+            adText.text = $"AD: {u.damage}";
+
+        if (armorText != null)
+        {
+            float armor = (u.data != null) ? u.data.armor : 0f;
+            armorText.text = $"Armor: {armor}";
+        }
+    }
+
+    public void Hide()
+    {
+        root.SetActive(false);
+    }
+}
