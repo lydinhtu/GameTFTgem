@@ -66,6 +66,18 @@ public class BattleManager : MonoBehaviour
         enemy.unitName = "Enemy";
         enemy.team = Team.Enemy;
 
+        // nếu board tồn tại, gán enemy vào ô góc trên bên phải
+        if (BoardManager.Instance != null && BoardManager.Instance.tiles != null)
+        {
+            int targetX = Mathf.Clamp(BoardManager.Instance.width - 1, 0, BoardManager.Instance.width - 1);
+            int targetY = Mathf.Clamp(BoardManager.Instance.height - 1, 0, BoardManager.Instance.height - 1);
+            Tile spawnTile = BoardManager.Instance.GetTile(targetX, targetY);
+            if (spawnTile != null)
+            {
+                enemy.SetTile(spawnTile);
+            }
+        }
+
         enemyUnits.Add(enemy);
     }
 
