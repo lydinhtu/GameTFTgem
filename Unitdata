@@ -1,0 +1,18 @@
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "TFT/Unit Data")]
+public class UnitData : ScriptableObject
+{
+    [Header("Hiển thị")]
+    public string unitName;
+    public Sprite portrait;
+    public int cost;
+
+    [Header("Chỉ số cơ bản")]
+    public int maxHP = 100;
+    public int maxMana = 100;
+    public int attackDamage = 20;
+    public float attackSpeed = 1.0f;
+    public float armor = 20f;
+    public float magicResist = 20f;
+}
