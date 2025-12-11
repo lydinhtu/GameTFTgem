@@ -19,13 +19,29 @@ public class InputManager : MonoBehaviour
 
     public void OnUnitClicked(Unit unit)
     {
-        // 🔒 ĐANG TRONG TRẬN THÌ KHÔNG CHO CHỌN TƯỚNG
-        if (BattleManager.Instance != null && BattleManager.Instance.isBattleActive)
+        if (unit == null) return;
+
+        // ✅ LUÔN cho xem thông tin unit (cả tướng mình lẫn quái)
+        // Nếu bạn có UI info, gọi ở đây
+        // Ví dụ:
+        // if (UnitInfoUI.Instance != null)
+        //     UnitInfoUI.Instance.Show(unit);
+
+        // ❌ KHÔNG BAO GIỜ SELECT QUÁI ĐỂ MOVE
+        if (unit.team == Team.Enemy)
         {
-            Debug.Log("Battle is active -> cannot select unit.");
+            Debug.Log("Clicked enemy: chỉ xem info, không được chọn để di chuyển.");
             return;
         }
 
+        // ❌ ĐANG TRONG TRẬN THÌ KHÔNG CHO CHỌN TƯỚNG ĐỂ MOVE
+        if (BattleManager.Instance != null && BattleManager.Instance.isBattleActive)
+        {
+            Debug.Log("Battle is active -> cannot select unit for moving.");
+            return;
+        }
+
+        // ✅ Chỉ tướng PLAYER, khi chưa combat, mới được chọn để move
         selectedUnit = unit;
         Debug.Log("Selected unit: " + unit.unitName);
     }
@@ -34,7 +50,7 @@ public class InputManager : MonoBehaviour
     {
         if (selectedUnit == null) return;
 
-        // 🔒 ĐANG TRONG TRẬN THÌ KHÔNG CHO MOVE TƯỚNG
+        // ❌ ĐANG TRONG TRẬN THÌ KHÔNG CHO MOVE
         if (BattleManager.Instance != null && BattleManager.Instance.isBattleActive)
         {
             Debug.Log("Battle is active -> cannot move unit.");
