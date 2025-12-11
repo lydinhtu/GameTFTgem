@@ -203,6 +203,10 @@ public class BattleManager : MonoBehaviour
             // Gán các thuộc tính cơ bản
             enemy.team = Team.Enemy;
             enemy.isInBattle = false;    // PREVIEW, chưa đánh cho tới khi StartBattle
+                                         // XOAY QUÁI VỀ CAMERA
+            Vector3 lookPos = Camera.main.transform.position;
+            lookPos.y = enemy.transform.position.y;   // không nghiêng đầu
+            enemy.transform.LookAt(lookPos);
 
             enemyUnits.Add(enemy);
         }
