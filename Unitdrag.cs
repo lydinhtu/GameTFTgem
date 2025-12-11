@@ -18,7 +18,14 @@ public class UnitDrag : MonoBehaviour
     {
         if (unit == null) return;
 
-        // 🔒 ĐANG TRONG TRẬN THÌ KHÔNG CHO NHẤC / KÉO TƯỚNG
+        // ❌ KHÔNG CHO KÉO QUÁI (ENEMY) BAO GIỜ
+        if (unit.team == Team.Enemy)
+        {
+            Debug.Log("Enemy unit: chỉ xem, không được kéo.");
+            return;
+        }
+
+        // ❌ ĐANG TRONG TRẬN THÌ KHÔNG CHO KÉO (kể cả tướng mình)
         if (BattleManager.Instance != null && BattleManager.Instance.isBattleActive)
         {
             Debug.Log("Battle is active -> cannot drag unit.");
@@ -53,7 +60,7 @@ public class UnitDrag : MonoBehaviour
             }
         }
 
-        // Nếu tới đây nghĩa là không thả vào ô hợp lệ → trả lại vị trí cũ
+        // Nếu không thả được vào ô hợp lệ → trả lại vị trí cũ
         unit.SetTile(oldTile);
     }
 
