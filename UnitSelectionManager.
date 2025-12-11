@@ -7,33 +7,36 @@ public class UnitSelectionManager : MonoBehaviour
     public LayerMask unitLayer;
     public UnitInfoUI infoUI;
 
+    private Unit selectedUnit;
+
     void Start()
     {
-        if (cam == null)
-            cam = Camera.main;
+        if (cam == null) cam = Camera.main;
     }
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (!Input.GetMouseButtonDown(0))
+            return;
+
+        // nếu click lên UI thì bỏ qua
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            return;
+
+        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f, unitLayer))
         {
-            // Bấm vào UI thì bỏ qua
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
-                return;
-
-            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f, unitLayer))
+            Unit u = hit.collider.GetComponentInParent<Unit>();
+            if (u != null)
             {
-                Unit u = hit.collider.GetComponentInParent<Unit>();
-                if (u != null)
-                {
-                    infoUI.Show(u);
-                    return;
-                }
+                selectedUnit = u;
+                infoUI.Show(selectedUnit);
+                return;
             }
-
-            // Nếu không click vào tướng → ẩn panel
-            infoUI.Hide();
         }
+
+        // click ra ngoài → ẩn panel
+        selectedUnit = null;
+        infoUI.Hide();
     }
 }
