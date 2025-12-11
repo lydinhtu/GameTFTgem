@@ -13,16 +13,35 @@ public class Unit : MonoBehaviour
     public string unitName;
     public Team team;
 
-    [Header("Stats")]
-    public int hp = 100;
-    public int damage = 10;
+    // ====== UNIT DATA (config từ ScriptableObject) ======
+    [Header("Unit Data (config)")]
+    public UnitData data;   // kéo file UnitData vào đây trong Inspector nếu có
+
+    // ====== CHỈ SỐ RUNTIME (dùng trong game) ======
+    [Header("Stats (runtime)")]
+    public int maxHP;           // máu tối đa
+    public int maxMana;         // mana tối đa
+    public int attackDamage;    // sát thương vật lý
+    public float attackSpeed;   // tốc đánh (chưa dùng thì để dành sau)
+    public float armor;         // giáp
+    public float magicResist;   // kháng phép
+
+    [HideInInspector] public int currentHP;
+    [HideInInspector] public int currentMana;
+
+    // ====== Stats cũ để không phá code khác (được sync từ stats runtime) ======
+    [Header("Legacy Stats (sync từ runtime)")]
+    public int hp = 100;                 // sẽ = maxHP
+    public int damage = 10;              // sẽ = attackDamage
     public float attackCooldown = 1f;
-    public int attackRangeTiles = 1;   // 1 = melee, >1 = đánh xa
-    public float moveSpeed = 4f;       // tốc độ di chuyển
+    public int attackRangeTiles = 1;     // 1 = melee, >1 = đánh xa
+    public float moveSpeed = 4f;         // tốc độ di chuyển
 
     [Header("Vị trí")]
-    public float heightOffsetY = 0.5f; // nâng model lên khỏi mặt tile
+    public float heightOffsetY = 0.5f;   // nâng model lên khỏi mặt tile
     public Tile currentTile;
+
+    public bool isInBattle = false;
 
     float lastAttackTime = -999f;
 
@@ -42,6 +61,44 @@ public class Unit : MonoBehaviour
             pos.y += heightOffsetY;
             transform.position = pos;
         }
+
+        // Lấy stat từ UnitData (nếu có) hoặc từ giá trị sẵn có
+        ApplyDataFromConfig();
+    }
+
+    /// <summary>
+    /// Lấy tất cả chỉ số từ UnitData (nếu có) đổ vào các biến runtime.
+    /// Gọi 1 lần khi spawn hoặc sau khi set data.
+    /// </summary>
+    public void ApplyDataFromConfig()
+    {
+        if (data == null)
+        {
+            // Không có UnitData: dùng các giá trị đang có trong Inspector
+            maxHP = hp;
+            maxMana = 100;
+            attackDamage = damage;
+            attackSpeed = 1f;
+            armor = 0f;
+            magicResist = 0f;
+        }
+        else
+        {
+            unitName = data.unitName;
+            maxHP = data.maxHP;
+            maxMana = data.maxMana;
+            attackDamage = data.attackDamage;
+            attackSpeed = data.attackSpeed;
+            armor = data.armor;
+            magicResist = data.magicResist;
+        }
+
+        currentHP = maxHP;
+        currentMana = 0;
+
+        // Đồng bộ về biến cũ để không làm hỏng chỗ khác
+        hp = maxHP;
+        damage = attackDamage;
     }
 
     /// <summary>
@@ -76,9 +133,10 @@ public class Unit : MonoBehaviour
             transform.position = pos;
         }
     }
-    public bool isInBattle = false;
-    void Update()   
+
+    void Update()
     {
+        // Chỉ unit được tham chiến mới xử lý AI
         if (!isInBattle) return;
         if (!BattleManager.Instance.isBattleActive) return;
 
@@ -206,17 +264,21 @@ public class Unit : MonoBehaviour
 
         lastAttackTime = Time.time;
 
-        // Ở đây bạn có thể thêm animation, spawn effect...
-        target.TakeDamage(damage);
+        // dùng attackDamage runtime
+        target.TakeDamage(attackDamage);
     }
 
     public void TakeDamage(int amount)
     {
-        hp -= amount;
-        if (hp <= 0)
+        currentHP -= amount;
+        if (currentHP <= 0)
         {
+            currentHP = 0;
             Die();
         }
+
+        // sync về hp cũ cho chắc
+        hp = currentHP;
     }
 
     void Die()
