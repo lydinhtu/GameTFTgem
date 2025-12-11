@@ -18,4 +18,5 @@ public class UnitData : ScriptableObject
     public int ad = 10;         // sát thương vật lý
     public float mr = 0f;       // kháng phép
     public float moveSpeed = 3f;
+    public int attackRangeTiles = 1;
 }
