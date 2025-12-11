@@ -44,6 +44,12 @@ public class BattleManager : MonoBehaviour
     [HideInInspector] public List<Unit> playerUnits = new List<Unit>();
     [HideInInspector] public List<Unit> enemyUnits = new List<Unit>();
 
+    /// <summary>
+    /// Lưu vị trí bắt đầu của lính mình (trước khi ấn START).
+    /// Key = Unit, Value = Tile ban đầu.
+    /// </summary>
+    private Dictionary<Unit, Tile> playerStartTiles = new Dictionary<Unit, Tile>();
+
     private void Awake()
     {
         Instance = this;
@@ -74,6 +80,7 @@ public class BattleManager : MonoBehaviour
 
         // Xây lại list playerUnits dựa trên các Unit đang đứng trên board
         playerUnits.Clear();
+        playerStartTiles.Clear();   // reset vị trí start của round mới
 
         Unit[] allUnits = FindObjectsOfType<Unit>();
         foreach (Unit u in allUnits)
@@ -89,6 +96,12 @@ public class BattleManager : MonoBehaviour
                 {
                     if (!playerUnits.Contains(u))
                         playerUnits.Add(u);
+
+                    // LƯU LẠI TILE BAN ĐẦU CỦA LÍNH MÌNH
+                    if (!playerStartTiles.ContainsKey(u))
+                    {
+                        playerStartTiles.Add(u, u.currentTile);
+                    }
                 }
             }
         }
@@ -143,6 +156,9 @@ public class BattleManager : MonoBehaviour
                 Destroy(e.gameObject);
         }
         enemyUnits.Clear();
+
+        // lúc chuẩn bị round mới, clear luôn cache vị trí start của round cũ
+        playerStartTiles.Clear();
 
         RoundConfig config = rounds[currentRoundIndex];
         if (config == null || config.spawns == null || config.spawns.Length == 0)
@@ -220,6 +236,34 @@ public class BattleManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Hồi full máu và đưa lính mình về vị trí trước khi bắt đầu round.
+    /// Gọi sau khi round kết thúc (thắng hoặc thua).
+    /// </summary>
+    private void ResetPlayerUnitsAfterBattle()
+    {
+        foreach (KeyValuePair<Unit, Tile> kvp in playerStartTiles)
+        {
+            Unit unit = kvp.Key;
+            Tile startTile = kvp.Value;
+
+            if (unit == null || startTile == null) continue;
+
+            // Hết round rồi, không còn trong trạng thái combat
+            unit.isInBattle = false;
+
+            // HỒI FULL MÁU – CHỖ NÀY GIẢ ĐỊNH BẠN CÓ currentHP / maxHP
+            // Nếu tên biến khác thì bạn đổi lại cho đúng.
+            unit.currentHP = unit.maxHP;
+
+            // ĐƯA VỀ LẠI TILE BAN ĐẦU
+            unit.SetTile(startTile);
+        }
+
+        // Sau khi reset xong cho round hiện tại, có thể clear
+        playerStartTiles.Clear();
+    }
+
+    /// <summary>
     /// Được Unit gọi khi chết.
     /// </summary>
     public void OnUnitDied(Unit unit)
@@ -232,16 +276,28 @@ public class BattleManager : MonoBehaviour
         if (!isBattleActive)
             return;
 
+        // THUA ROUND
         if (playerUnits.Count == 0)
         {
             Debug.Log($"Player THUA ở round {currentRoundIndex + 1}");
             isBattleActive = false;
-            // TODO: thêm logic game over / restart nếu muốn
+
+            // Sau này bạn trừ máu người chơi ở đây
+            // vd: PlayerHealth.Instance.TakeDamage(x);
+
+            // Hồi máu + đưa các unit còn sống (nếu có) về chỗ cũ
+            ResetPlayerUnitsAfterBattle();
+
+            // TODO: tuỳ bạn chọn có cho chơi tiếp round sau hay game over
         }
+        // THẮNG ROUND
         else if (enemyUnits.Count == 0)
         {
             Debug.Log($"Player THẮNG round {currentRoundIndex + 1}");
             isBattleActive = false;
+
+            // Hồi máu + đưa lính mình về vị trí trước combat
+            ResetPlayerUnitsAfterBattle();
 
             // Chuẩn bị round tiếp theo (spawn preview quái mới)
             PrepareNextRound();
