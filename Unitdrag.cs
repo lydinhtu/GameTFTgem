@@ -8,15 +8,22 @@ public class UnitDrag : MonoBehaviour
     private Vector3 offset;
     private Tile oldTile;
 
-    void Start()
+    private void Start()
     {
         cam = Camera.main;
         unit = GetComponent<Unit>();
     }
 
-    void OnMouseDown()
+    private void OnMouseDown()
     {
         if (unit == null) return;
+
+        // 🔒 ĐANG TRONG TRẬN THÌ KHÔNG CHO NHẤC / KÉO TƯỚNG
+        if (BattleManager.Instance != null && BattleManager.Instance.isBattleActive)
+        {
+            Debug.Log("Battle is active -> cannot drag unit.");
+            return;
+        }
 
         isDragging = true;
         oldTile = unit.currentTile;
@@ -25,8 +32,9 @@ public class UnitDrag : MonoBehaviour
         offset = transform.position - GetMouseWorldPos();
     }
 
-    void OnMouseUp()
+    private void OnMouseUp()
     {
+        if (!isDragging) return;
         isDragging = false;
 
         // Raycast tìm Tile bên dưới
@@ -49,7 +57,7 @@ public class UnitDrag : MonoBehaviour
         unit.SetTile(oldTile);
     }
 
-    void Update()
+    private void Update()
     {
         if (isDragging)
         {
@@ -58,7 +66,7 @@ public class UnitDrag : MonoBehaviour
         }
     }
 
-    Vector3 GetMouseWorldPos()
+    private Vector3 GetMouseWorldPos()
     {
         var plane = new Plane(Vector3.up, Vector3.zero);
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
