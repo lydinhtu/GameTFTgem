@@ -1,18 +1,48 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[System.Serializable]
+public class EnemySpawnEntry
+{
+    [Tooltip("Tên cho dễ nhớ khi nhìn trong Inspector (không bắt buộc)")]
+    public string name;
+
+    [Tooltip("Toạ độ tile theo grid. X: cột, Y: hàng. (0,0) thường là góc trái dưới.")]
+    public int tileX;
+
+    [Tooltip("Toạ độ tile theo grid. X: cột, Y: hàng. (0,0) thường là góc trái dưới.")]
+    public int tileY;
+
+    [Tooltip("Prefab quái. Nếu để trống sẽ dùng defaultEnemyPrefab trong BattleManager.")]
+    public GameObject enemyPrefab;
+}
+
+[System.Serializable]
+public class RoundConfig
+{
+    [Tooltip("Tên round cho dễ quan sát, ví dụ: Round 1, Krugs, Wolves...")]
+    public string roundName;
+
+    [Tooltip("Danh sách các quái spawn trong round này.")]
+    public EnemySpawnEntry[] spawns;
+}
+
 public class BattleManager : MonoBehaviour
 {
     public static BattleManager Instance;
 
-    [Header("Enemy")]
-    public GameObject enemyUnitPrefab;
+    [Header("Enemy settings")]
+    [Tooltip("Prefab quái mặc định nếu từng spawn không gán prefab riêng.")]
+    public GameObject defaultEnemyPrefab;
 
-    [HideInInspector]
-    public bool isBattleActive = false;
+    [Tooltip("Cấu hình các round quái. Mỗi phần tử = 1 round.")]
+    public RoundConfig[] rounds;
 
-    public List<Unit> playerUnits = new List<Unit>();
-    public List<Unit> enemyUnits = new List<Unit>();
+    [HideInInspector] public bool isBattleActive = false;
+    [HideInInspector] public int currentRoundIndex = -1;   // 0-based (0 = Round 1)
+
+    [HideInInspector] public List<Unit> playerUnits = new List<Unit>();
+    [HideInInspector] public List<Unit> enemyUnits = new List<Unit>();
 
     private void Awake()
     {
@@ -21,105 +51,152 @@ public class BattleManager : MonoBehaviour
 
     private void Start()
     {
-        // lúc mới vào game đang ở phase chuẩn bị
         isBattleActive = false;
+        currentRoundIndex = -1;
+
+        // Vào game là chuẩn bị luôn round đầu tiên (spawn quái để preview)
+        PrepareNextRound();
     }
 
-    // Gọi hàm này khi bấm nút START
+    /// <summary>
+    /// Được gọi khi bấm nút START.
+    /// </summary>
     public void StartBattle()
     {
-        if (isBattleActive) return;
+        if (isBattleActive)
+            return;
 
-        // Xoá list cũ
-        playerUnits.Clear();
-        enemyUnits.Clear();
-
-        // 1) Spawn đợt quái mới TRƯỚC khi scan Unit trong scene
-        SpawnEnemyWave();
-
-        // 2) Lấy tất cả Unit trong scene
-        Unit[] allUnits = FindObjectsOfType<Unit>();
-
-        // reset cờ isInBattle cho chắc
-        foreach (var u in allUnits)
+        if (enemyUnits.Count == 0)
         {
-            u.isInBattle = false;
+            Debug.LogWarning("StartBattle được gọi nhưng không có quái nào trong round hiện tại.");
+            return;
         }
 
-        // 3) Chọn những con thực sự vào trận
-        foreach (var u in allUnits)
+        // Xây lại list playerUnits dựa trên các Unit đang đứng trên board
+        playerUnits.Clear();
+
+        Unit[] allUnits = FindObjectsOfType<Unit>();
+        foreach (Unit u in allUnits)
         {
             if (u.currentTile == null) continue;
 
-            float z = u.currentTile.transform.position.z;
-
             if (u.team == Team.Player)
             {
-                // chỉ lấy mấy con đang đứng trên BOARD (không lấy bench)
-                // chỉnh điều kiện này nếu board của bạn ở vùng khác
+                // Chỉ tính các unit đang đứng trên board (không phải bench).
+                // Nếu board của bạn vùng khác, chỉnh lại điều kiện này.
+                float z = u.currentTile.transform.position.z;
                 if (z >= 0f)
                 {
-                    playerUnits.Add(u);
-                    u.isInBattle = true;
+                    if (!playerUnits.Contains(u))
+                        playerUnits.Add(u);
                 }
             }
-            else if (u.team == Team.Enemy)
-            {
-                // enemy nào đã spawn thì cho vào trận hết
-                enemyUnits.Add(u);
+        }
+
+        // Bật isInBattle cho cả 2 bên
+        foreach (Unit u in playerUnits)
+            u.isInBattle = true;
+
+        foreach (Unit u in enemyUnits)
+        {
+            if (u != null)
                 u.isInBattle = true;
-            }
         }
 
         isBattleActive = true;
 
-        // Clear unit đang chọn (nếu có)
+        // Clear selection để tránh kéo / move khi đang combat
         if (InputManager.Instance != null)
-        {
             InputManager.Instance.ClearSelection();
-        }
 
-        Debug.Log($"StartBattle: playerUnits = {playerUnits.Count}, enemyUnits = {enemyUnits.Count}");
+        Debug.Log($"ROUND {currentRoundIndex + 1} START. Player={playerUnits.Count}, Enemy={enemyUnits.Count}");
     }
 
-    private void SpawnEnemyWave()
+    /// <summary>
+    /// Chuẩn bị round tiếp theo:
+    /// - Tăng currentRoundIndex
+    /// - Xoá quái cũ
+    /// - Spawn quái mới theo config.rounds (preview, chưa đánh)
+    /// </summary>
+    private void PrepareNextRound()
     {
-        // dùng BoardManager để spawn thẳng lên Tile, không dùng toạ độ world tự random nữa
+        currentRoundIndex++;
+
+        if (rounds == null || rounds.Length == 0)
+        {
+            Debug.LogError("BattleManager: rounds chưa được cấu hình trong Inspector.");
+            return;
+        }
+
+        if (currentRoundIndex >= rounds.Length)
+        {
+            Debug.Log("Đã hoàn thành tất cả round quái!");
+            return;
+        }
+
+        isBattleActive = false;
+
+        // Xoá sạch quái cũ
+        foreach (Unit e in enemyUnits)
+        {
+            if (e != null)
+                Destroy(e.gameObject);
+        }
+        enemyUnits.Clear();
+
+        RoundConfig config = rounds[currentRoundIndex];
+        if (config == null || config.spawns == null || config.spawns.Length == 0)
+        {
+            Debug.LogWarning($"Round {currentRoundIndex + 1} không có spawn nào được cấu hình.");
+            return;
+        }
+
         BoardManager bm = BoardManager.Instance;
         if (bm == null)
         {
-            Debug.LogError("BoardManager.Instance = null, không spawn được enemy!");
+            Debug.LogError("BoardManager.Instance = null, không spawn được quái!");
             return;
         }
 
-        // ví dụ: spawn ở góc trên bên phải của board
-        int spawnX = bm.width - 1;
-        int spawnY = bm.height - 1;
-
-        Tile spawnTile = bm.GetTile(spawnX, spawnY);
-        if (spawnTile == null)
+        // Spawn từng quái theo danh sách spawn của round
+        foreach (EnemySpawnEntry entry in config.spawns)
         {
-            Debug.LogError($"Không lấy được Tile để spawn enemy tại ({spawnX}, {spawnY})");
-            return;
+            if (entry == null) continue;
+
+            Tile tile = bm.GetTile(entry.tileX, entry.tileY);
+            if (tile == null)
+            {
+                Debug.LogError($"Round {currentRoundIndex + 1} spawn '{entry.name}': Tile ({entry.tileX},{entry.tileY}) không tồn tại.");
+                continue;
+            }
+
+            GameObject prefabToUse = entry.enemyPrefab != null ? entry.enemyPrefab : defaultEnemyPrefab;
+            if (prefabToUse == null)
+            {
+                Debug.LogError($"Round {currentRoundIndex + 1} spawn '{entry.name}': Chưa gán enemyPrefab và defaultEnemyPrefab cũng null.");
+                continue;
+            }
+
+            GameObject obj = Instantiate(prefabToUse);
+            Unit enemy = obj.GetComponent<Unit>();
+            if (enemy == null) enemy = obj.AddComponent<Unit>();
+
+            // Đặt unit lên tile (snap vị trí)
+            enemy.SetTile(tile);
+
+            // Gán các thuộc tính cơ bản
+            enemy.team = Team.Enemy;
+            enemy.isInBattle = false;    // PREVIEW, chưa đánh cho tới khi StartBattle
+
+            enemyUnits.Add(enemy);
         }
 
-        // tạo enemy
-        GameObject obj = Instantiate(enemyUnitPrefab);
-        Unit enemy = obj.GetComponent<Unit>();
-        if (enemy == null) enemy = obj.AddComponent<Unit>();
-
-        enemy.unitName = "Enemy";
-        enemy.team = Team.Enemy;
-
-        // QUAN TRỌNG: đặt enemy lên tile (SetTile sẽ tự move transform về vị trí ô)
-        enemy.SetTile(spawnTile);
-
-        // thêm vào list enemy
-        enemyUnits.Add(enemy);
-
-        Debug.Log($"Spawn enemy tại Tile ({spawnTile.x}, {spawnTile.y}) pos = {spawnTile.transform.position}");
+        Debug.Log($"PrepareNextRound → ROUND {currentRoundIndex + 1} ({config.roundName}). Spawn {enemyUnits.Count} quái theo tile X/Y.");
     }
 
+    /// <summary>
+    /// Tìm mục tiêu gần nhất cho AI.
+    /// </summary>
     public Unit FindClosestEnemy(Unit from)
     {
         List<Unit> targets = (from.team == Team.Player) ? enemyUnits : playerUnits;
@@ -127,7 +204,7 @@ public class BattleManager : MonoBehaviour
         Unit closest = null;
         float minDist = float.MaxValue;
 
-        foreach (var u in targets)
+        foreach (Unit u in targets)
         {
             if (u == null) continue;
 
@@ -142,6 +219,9 @@ public class BattleManager : MonoBehaviour
         return closest;
     }
 
+    /// <summary>
+    /// Được Unit gọi khi chết.
+    /// </summary>
     public void OnUnitDied(Unit unit)
     {
         if (unit.team == Team.Player)
@@ -149,16 +229,22 @@ public class BattleManager : MonoBehaviour
         else
             enemyUnits.Remove(unit);
 
-        // check thắng/thua
+        if (!isBattleActive)
+            return;
+
         if (playerUnits.Count == 0)
         {
-            Debug.Log("Player THUA round này");
+            Debug.Log($"Player THUA ở round {currentRoundIndex + 1}");
             isBattleActive = false;
+            // TODO: thêm logic game over / restart nếu muốn
         }
         else if (enemyUnits.Count == 0)
         {
-            Debug.Log("Player THẮNG round này");
+            Debug.Log($"Player THẮNG round {currentRoundIndex + 1}");
             isBattleActive = false;
+
+            // Chuẩn bị round tiếp theo (spawn preview quái mới)
+            PrepareNextRound();
         }
     }
 }
