@@ -15,4 +15,7 @@ public class UnitData : ScriptableObject
     public float attackSpeed = 1.0f;
     public float armor = 20f;
     public float magicResist = 20f;
+    public int ad = 10;         // sát thương vật lý
+    public float mr = 0f;       // kháng phép
+    public float moveSpeed = 3f;
 }
