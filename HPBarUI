@@ -1,0 +1,32 @@
+using UnityEngine;
+
+public class HPBarUI : MonoBehaviour
+{
+    public Unit targetUnit;
+    private RectTransform rect;
+    private float originalWidth;
+
+    void Awake()
+    {
+        if (targetUnit == null)
+            targetUnit = GetComponentInParent<Unit>();
+
+        rect = GetComponent<RectTransform>();
+        if (rect != null)
+            originalWidth = rect.sizeDelta.x;  // lưu chiều rộng ban đầu
+    }
+
+    void LateUpdate()
+    {
+        if (targetUnit == null || rect == null || targetUnit.maxHP <= 0)
+            return;
+
+        float ratio = Mathf.Clamp01((float)targetUnit.currentHP / targetUnit.maxHP);
+
+        // Cách 1: scale theo X
+        rect.localScale = new Vector3(ratio, 1f, 1f);
+
+        // (Nếu thích co bớt width mà giữ scale = 1 thì dùng dòng dưới thay vì localScale)
+        // rect.sizeDelta = new Vector2(originalWidth * ratio, rect.sizeDelta.y);
+    }
+}
