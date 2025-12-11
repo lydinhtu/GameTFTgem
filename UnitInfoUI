@@ -1,89 +1,125 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class UnitInfoUI : MonoBehaviour
 {
     [Header("Root Panel")]
-    public GameObject root;      // Panel chính
+    public GameObject rootPanel;              // chính là UnitInfoPanel
 
     [Header("Main")]
     public TMP_Text nameText;
     public Image portraitImage;
 
     [Header("HP / Mana Bars (Image)")]
-    public Image hpBarFill;      // Image của thanh máu (fill)
-    public Image manaBarFill;    // Image của thanh mana (fill)
+    public Image hpBarFill;                   // ảnh màu của thanh máu (Fill)
+    public Image manaBarFill;                 // ảnh màu của thanh mana (Fill)
 
     [Header("6 Stat Texts")]
     public TMP_Text[] statTexts = new TMP_Text[6];
-    // Gợi ý:
-    // 0: AD
-    // 1: Armor
-    // 2: Magic Resist
-    // 3: Attack Speed
-    // 4: Range
-    // 5: Move Speed
+    // 0 = AD, 1 = Armor, 2 = MR, 3 = AS, 4 = Range, 5 = Move
+
+    // --- runtime state ---
+    private Unit currentUnit;                 // con hiện đang được xem info
 
     void Awake()
     {
-        if (root == null)
-            root = gameObject;
+        if (rootPanel == null)
+            rootPanel = gameObject;
 
         Hide();
     }
 
+    void Update()
+    {
+        // mỗi frame, nếu đang hiển thị 1 con thì cập nhật HP/Mana theo currentHP hiện tại
+        if (rootPanel.activeSelf && currentUnit != null)
+        {
+            RefreshRuntimeBars();
+        }
+    }
+
+    // Gọi khi click chọn 1 unit
     public void Show(Unit u)
     {
+        currentUnit = u;
+
         if (u == null)
         {
             Hide();
             return;
         }
 
-        root.SetActive(true);
+        rootPanel.SetActive(true);
 
         // ===== TÊN & ẢNH =====
-        if (u.data != null)
+        if (nameText != null)
         {
-            if (nameText) nameText.text = u.data.unitName;
+            string n = string.IsNullOrEmpty(u.unitName) ? "Unit" : u.unitName;
+            nameText.text = n;
+        }
 
-            if (portraitImage && u.data.portrait != null)
+        if (portraitImage != null)
+        {
+            if (u.data != null && u.data.portrait != null)
                 portraitImage.sprite = u.data.portrait;
-        }
-        else
-        {
-            if (nameText) nameText.text = u.unitName;
+            else
+                portraitImage.sprite = null;   // để trống nếu chưa có sprite
         }
 
-        // ===== HP BAR =====
-        if (hpBarFill)
+        
+        // ===== TEXT 6 CHỈ SỐ =====
+        if (statTexts != null && statTexts.Length >= 6)
         {
-            float ratio = (u.maxHP > 0) ? (float)u.currentHP / u.maxHP : 0f;
-            hpBarFill.fillAmount = Mathf.Clamp01(ratio);
+            if (statTexts[0] != null) statTexts[0].text = $"AD: {ad}";
+            if (statTexts[1] != null) statTexts[1].text = $"Armor: {armor:0}";
+            if (statTexts[2] != null) statTexts[2].text = $"MR: {mr:0}";
+            if (statTexts[3] != null) statTexts[3].text = $"AS: {attackSpeed:0.00}";
+            if (statTexts[4] != null) statTexts[4].text = $"Range: {range}";
+            if (statTexts[5] != null) statTexts[5].text = $"Move: {move:0.0}";
         }
 
-        // ===== MANA BAR =====
-        if (manaBarFill)
+        // set kiểu Fill cho 2 thanh (phòng khi quên chỉnh trong Inspector)
+        SetupBarImage(hpBarFill);
+        SetupBarImage(manaBarFill);
+
+        // cập nhật lần đầu
+        RefreshRuntimeBars();
+    }
+
+    // chỉ update fillAmount dựa trên currentHP/currentMana hiện tại
+    private void RefreshRuntimeBars()
+    {
+        if (currentUnit == null) return;
+
+        // HP
+        if (hpBarFill != null && currentUnit.maxHP > 0)
         {
-            float ratio = (u.maxMana > 0) ? (float)u.currentMana / u.maxMana : 0f;
-            manaBarFill.fillAmount = Mathf.Clamp01(ratio);
+            float ratioHP = (float)currentUnit.currentHP / currentUnit.maxHP;
+            hpBarFill.fillAmount = Mathf.Clamp01(ratioHP);
         }
 
-        // ===== 6 STAT =====
-        if (statTexts.Length >= 6)
+        // MANA
+        if (manaBarFill != null && currentUnit.maxMana > 0)
         {
-            if (statTexts[0]) statTexts[0].text = $"AD: {u.attackDamage}";
-            if (statTexts[1]) statTexts[1].text = $"Armor: {u.armor}";
-            if (statTexts[2]) statTexts[2].text = $"MR: {u.magicResist}";
-            if (statTexts[3]) statTexts[3].text = $"AS: {u.attackSpeed:0.00}";
-            if (statTexts[4]) statTexts[4].text = $"Range: {u.attackRangeTiles}";
-            if (statTexts[5]) statTexts[5].text = $"Move: {u.moveSpeed:0.0}";
+            float ratioMana = (float)currentUnit.currentMana / currentUnit.maxMana;
+            manaBarFill.fillAmount = Mathf.Clamp01(ratioMana);
         }
+    }
+
+    private void SetupBarImage(Image img)
+    {
+        if (img == null) return;
+
+        img.type = Image.Type.Filled;
+        img.fillMethod = Image.FillMethod.Horizontal;
+        img.fillOrigin = (int)Image.OriginHorizontal.Left;
     }
 
     public void Hide()
     {
-        root.SetActive(false);
+        currentUnit = null;
+        if (rootPanel != null)
+            rootPanel.SetActive(false);
     }
 }
