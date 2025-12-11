@@ -4,65 +4,194 @@ using TMPro;
 
 public class ShopManager : MonoBehaviour
 {
-    [Header("Cấu hình shop")]
-    public GameObject unitPrefab;   // prefab tướng
-    public Button[] shopButtons;    // 5 ô shop
-    public int unitCost = 3;        // giá mỗi tướng
+    public static ShopManager Instance;
 
-    [Header("UI")]
-    public TMP_Text[] costTexts;    // text hiển thị giá trên từng ô (nếu có)
+    [Header("POOL TƯỚNG")]
+    [Tooltip("Danh sách tất cả tướng có thể xuất hiện trong shop")]
+    public UnitData[] unitPool;          // danh sách UnitData
 
-    void Start()
+    [Tooltip("Prefab tương ứng với từng UnitData. Cùng length với unitPool.")]
+    public GameObject[] unitPrefabs;     // prefab tướng (Mage, Warri o...)
+
+    [Tooltip("Nếu phần tử trong unitPrefabs bị trống sẽ dùng prefab này")]
+    public GameObject defaultUnitPrefab; // prefab mặc định
+
+    [Header("SHOP UI")]
+    [Tooltip("Các Button đại diện cho 5 ô shop")]
+    public Button[] shopButtons;         // 5 ô shop
+
+    [Tooltip("Tên tướng trên từng ô shop")]
+    public TMP_Text[] nameTexts;         // 5 text tên
+
+    [Tooltip("Giá vàng trên từng ô shop")]
+    public TMP_Text[] costTexts;         // 5 text giá
+
+    [Header("Giá roll")]
+    public int rollCost = 2;
+
+    // index của tướng đang nằm trong từng ô shop, -1 = trống
+    private int[] currentUnitIndices;
+
+    private void Awake()
     {
-        // gắn event cho từng nút
-        for (int i = 0; i < shopButtons.Length; i++)
-        {
-            int index = i;
-            shopButtons[i].onClick.AddListener(() =>
-            {
-                BuyUnit(index);
-            });
-
-            // nếu có cost text thì gán luôn
-            if (costTexts != null && i < costTexts.Length && costTexts[i] != null)
-            {
-                costTexts[i].text = unitCost.ToString();
-            }
-        }
+        Instance = this;
     }
 
-    void BuyUnit(int index)
+    private void Start()
     {
-        Debug.Log("Bấm mua ở ô shop " + index);
+        if (shopButtons == null || shopButtons.Length == 0)
+        {
+            Debug.LogError("ShopManager: Chưa gán shopButtons trong Inspector!");
+            return;
+        }
+
+        currentUnitIndices = new int[shopButtons.Length];
+        for (int i = 0; i < currentUnitIndices.Length; i++)
+            currentUnitIndices[i] = -1;
+
+        // Roll lần đầu miễn phí khi vào game
+        RollShopFree();
+    }
+
+    /// <summary>
+    /// Roll shop KHÔNG tốn vàng (dùng cho lần đầu vào game).
+    /// </summary>
+    public void RollShopFree()
+    {
+        RollInternal();
+    }
+
+    /// <summary>
+    /// OnClick của nút ROLL: trừ vàng rồi roll lại shop.
+    /// </summary>
+    public void RollShopPaid()
+    {
+        if (GoldManager.Instance == null)
+        {
+            Debug.LogError("GoldManager.Instance = null, không roll được!");
+            return;
+        }
+
+        bool paid = GoldManager.Instance.SpendGold(rollCost);
+        if (!paid)
+        {
+            Debug.Log("Không đủ vàng để roll! Cần " + rollCost);
+            return;
+        }
+
+        RollInternal();
+    }
+
+    /// <summary>
+    /// Hàm roll thật sự (random tướng cho từng ô).
+    /// </summary>
+    private void RollInternal()
+    {
+        if (unitPool == null || unitPool.Length == 0)
+        {
+            Debug.LogWarning("ShopManager: unitPool rỗng, không có tướng nào để roll!");
+            return;
+        }
+
+        for (int i = 0; i < shopButtons.Length; i++)
+        {
+            int randomIndex = Random.Range(0, unitPool.Length);
+            currentUnitIndices[i] = randomIndex;
+
+            UnitData data = unitPool[randomIndex];
+
+            // Cập nhật UI
+            if (nameTexts != null && i < nameTexts.Length && nameTexts[i] != null)
+                nameTexts[i].text = data != null ? data.unitName : "???";
+
+            if (costTexts != null && i < costTexts.Length && costTexts[i] != null)
+                costTexts[i].text = data != null ? data.cost.ToString() : "?";
+
+            if (shopButtons[i] != null)
+                shopButtons[i].interactable = true;
+        }
+
+        Debug.Log("Roll shop xong.");
+    }
+
+    /// <summary>
+    /// Mua tướng ở ô shop có index = slotIndex.
+    /// (Hàm này sẽ được gọi từ OnClick() của từng Button trong Inspector)
+    /// </summary>
+    public void BuyUnit(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= currentUnitIndices.Length)
+            return;
+
+        int unitIndex = currentUnitIndices[slotIndex];
+        if (unitIndex < 0)
+        {
+            Debug.Log("Ô shop " + slotIndex + " đang trống, không mua được.");
+            return;
+        }
 
         if (GoldManager.Instance == null)
         {
-            Debug.LogError("GoldManager chưa có trong scene!");
+            Debug.LogError("GoldManager.Instance = null, không mua được!");
             return;
         }
 
         if (BenchManager.Instance == null)
         {
-            Debug.LogError("BenchManager.Instance không tồn tại!");
+            Debug.LogError("BenchManager.Instance = null, không mua được!");
             return;
         }
 
-        // kiểm tra còn ô trống không
         if (!BenchManager.Instance.HasFreeSlot())
         {
             Debug.Log("Bench đã full, không mua được!");
             return;
         }
 
-        // thử trừ vàng, nếu không đủ thì SpendGold sẽ trả về false
-        bool paid = GoldManager.Instance.SpendGold(unitCost);
+        UnitData data = unitPool[unitIndex];
+        int cost = (data != null) ? data.cost : 3; // default 3 vàng nếu thiếu data
+
+        bool paid = GoldManager.Instance.SpendGold(cost);
         if (!paid)
         {
-            Debug.Log("Không đủ vàng để mua! Cần " + unitCost);
+            Debug.Log("Không đủ vàng để mua! Cần " + cost);
             return;
         }
 
-        // đủ vàng + bench còn slot → spawn tướng xuống bench
-        BenchManager.Instance.SpawnUnitToBench(unitPrefab);
+        // Chọn prefab tương ứng với UnitData
+        GameObject prefabToSpawn = defaultUnitPrefab;
+        if (unitPrefabs != null && unitIndex < unitPrefabs.Length && unitPrefabs[unitIndex] != null)
+        {
+            prefabToSpawn = unitPrefabs[unitIndex];
+        }
+
+        if (prefabToSpawn == null)
+        {
+            Debug.LogError("ShopManager: prefabToSpawn bị null, không spawn được tướng!");
+            return;
+        }
+
+        // Spawn tướng xuống bench
+        BenchManager.Instance.SpawnUnitToBench(prefabToSpawn);
+
+        // Sau khi mua, clear ô shop đó
+        ClearSlot(slotIndex);
+    }
+
+    /// <summary>
+    /// Xoá thông tin 1 ô shop sau khi đã mua tướng.
+    /// </summary>
+    private void ClearSlot(int i)
+    {
+        currentUnitIndices[i] = -1;
+
+        if (nameTexts != null && i < nameTexts.Length && nameTexts[i] != null)
+            nameTexts[i].text = "";
+
+        if (costTexts != null && i < costTexts.Length && costTexts[i] != null)
+            costTexts[i].text = "";
+
+        if (shopButtons != null && i < shopButtons.Length && shopButtons[i] != null)
+            shopButtons[i].interactable = false;
     }
 }
