@@ -1,0 +1,16 @@
+using UnityEngine;
+
+public abstract class SkillData : ScriptableObject
+{
+    [Header("Basic Info")]
+    public string skillName;
+    public Sprite icon;
+
+    [Header("Skill Settings")]
+    public float damageMultiplier = 2f;  // dame skill = attackDamage * damageMultiplier
+    public float projectileSpeed = 10f;
+    public GameObject projectilePrefab;
+
+    // HÀM CHÍNH: mọi skill sẽ override
+    public abstract void Execute(Unit caster, Unit target);
+}
