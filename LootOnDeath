@@ -1,0 +1,40 @@
+using UnityEngine;
+
+public class LootOnDeath : MonoBehaviour
+{
+    [Range(0f, 1f)] public float dropChance = 1f;
+    public GemData gemToDrop;
+    public int amount = 1;
+
+    [Header("Throw")]
+    public float throwForce = 3f;      // lực văng
+    public float upForce = 1.5f;       // văng lên nhẹ
+    public float randomRadius = 0.2f;  // lệch vị trí spawn
+
+    public void TryDrop()
+    {
+        Debug.Log("[LootOnDeath] TryDrop CALLED on: " + gameObject.name);
+
+        if (gemToDrop == null)
+        {
+            Debug.LogError("[LootOnDeath] gemToDrop is NULL");
+            return;
+        }
+
+        if (gemToDrop.worldPrefab == null)
+        {
+            Debug.LogError("[LootOnDeath] worldPrefab is NULL in GemData: " + gemToDrop.name);
+            return;
+        }
+
+        float r = Random.value;
+        Debug.Log("[LootOnDeath] roll=" + r + " chance=" + dropChance);
+
+        if (r > dropChance) return;
+
+        Vector3 spawnPos = transform.position;
+        Debug.Log("[LootOnDeath] SPAWN at " + spawnPos);
+
+        Instantiate(gemToDrop.worldPrefab, spawnPos, Quaternion.identity);
+    }
+}
