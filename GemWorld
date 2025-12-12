@@ -1,0 +1,25 @@
+using UnityEngine;
+
+public class GemWorld : MonoBehaviour
+{
+    public GemData gem;
+    public int amount = 1;
+
+    [Header("Pickup")]
+    public bool pickByClick = true;
+
+    // gọi khi nhặt (click hoặc sau này auto)
+    public void Pickup()
+    {
+        if (InventoryManager.I != null)
+            InventoryManager.I.AddGem(gem, amount);
+
+        Destroy(gameObject);
+    }
+
+    private void OnMouseDown()
+    {
+        if (!pickByClick) return;
+        Pickup();
+    }
+}
