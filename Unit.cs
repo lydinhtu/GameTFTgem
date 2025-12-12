@@ -28,13 +28,27 @@ public class Unit : MonoBehaviour
     public int attackRangeTiles;
     public float moveSpeed;
 
+    [Header("Attack / Skill")]
+    public bool isRanged = false;           // true = bắn xa, false = đánh gần
+    public GameObject basicProjectilePrefab;
+    public GameObject skillProjectilePrefab;
+    public float projectileSpeed = 8f;
+
+    public int manaPerAttack = 10;         // cộng mana mỗi lần đánh
+    public int manaPerHitTaken = 5;        // cộng mana khi bị đánh
+
     [HideInInspector] public int currentHP;
     [HideInInspector] public int currentMana;
     [HideInInspector] public float attackCooldown;
-
+    [Header("Skill System")]
+    public SkillData activeSkill;
     [Header("Vị trí")]
-    public float heightOffsetY = 0.5f;
+    // offset thêm nếu muốn cho model nổi/chìm so với mặt tile
+    public float heightOffsetY = 0f;
     public Tile currentTile;
+
+    // offset từ pivot -> chân model (tự tính)
+    float modelFootOffsetY = 0f;
 
     public bool isInBattle = false;
 
@@ -58,13 +72,69 @@ public class Unit : MonoBehaviour
     {
         ApplyDataFromConfig();
 
+        // Tính khoảng cách từ pivot -> chân model 1 lần
+        RecalculateModelFootOffset();
+
+        // Nếu đã có currentTile gán sẵn, đặt unit đúng vị trí
         if (currentTile != null)
         {
-            currentTile.currentUnit = this;
-            Vector3 pos = currentTile.transform.position;
-            pos.y += heightOffsetY;
-            transform.position = pos;
+            SetTile(currentTile);
         }
+    }
+
+    public void GainMana(int amount)
+    {
+        if (maxMana <= 0) return;
+        currentMana = Mathf.Clamp(currentMana + amount, 0, maxMana);
+        // TODO: update thanh mana UI sau này
+    }
+
+    // Tính khoảng cách từ pivot -> chân mesh (dùng bounds)
+    void RecalculateModelFootOffset()
+    {
+        Renderer r = GetComponentInChildren<Renderer>();
+        if (r != null)
+        {
+            float minY = r.bounds.min.y;         // chân thấp nhất của mesh (world)
+            float pivotY = transform.position.y; // pivot hiện tại (world)
+            modelFootOffsetY = pivotY - minY;   // khoảng cách pivot -> chân
+        }
+        else
+        {
+            modelFootOffsetY = 0f;
+        }
+    }
+
+    // Lấy tọa độ Y của mặt trên tile (top surface)
+    float GetTileTopY(Tile tile)
+    {
+        if (tile == null) return 0f;
+
+        Renderer r = tile.GetComponentInChildren<Renderer>();
+        if (r != null)
+        {
+            return r.bounds.max.y;   // mặt trên của mesh tile (world Y)
+        }
+
+        // fallback: không có renderer thì dùng transform Y
+        return tile.transform.position.y;
+    }
+
+    // Đặt unit đứng đúng trên tile (không đụng đến currentUnit / reservedUnit)
+    void PlaceOnTile(Tile tile)
+    {
+        if (tile == null) return;
+
+        float tileTopY = GetTileTopY(tile);
+
+        Vector3 pos = transform.position;
+        pos.x = tile.transform.position.x;
+        pos.z = tile.transform.position.z;
+
+        // Chân model = mặt tile + heightOffsetY
+        pos.y = tileTopY + modelFootOffsetY + heightOffsetY;
+
+        transform.position = pos;
     }
 
     // ============================================
@@ -118,10 +188,7 @@ public class Unit : MonoBehaviour
         if (newTile != null)
         {
             newTile.currentUnit = this;
-
-            Vector3 pos = newTile.transform.position;
-            pos.y += heightOffsetY;
-            transform.position = pos;
+            PlaceOnTile(newTile);
         }
     }
 
@@ -196,8 +263,13 @@ public class Unit : MonoBehaviour
             return;
         }
 
-        Vector3 targetPos = moveTargetTile.transform.position;
-        targetPos.y += heightOffsetY;
+        // Tính targetPos dựa trên mặt tile + chân model
+        float tileTopY = GetTileTopY(moveTargetTile);
+        Vector3 targetPos = new Vector3(
+            moveTargetTile.transform.position.x,
+            tileTopY + modelFootOffsetY + heightOffsetY,
+            moveTargetTile.transform.position.z
+        );
 
         moveT += Time.deltaTime * moveSpeed;
         float t = Mathf.Clamp01(moveT);
@@ -233,14 +305,64 @@ public class Unit : MonoBehaviour
     void TryAttack(Unit target)
     {
         if (Time.time - lastAttackTime < attackCooldown) return;
-
         lastAttackTime = Time.time;
-        target.TakeDamage(attackDamage);
+
+        // Nếu đủ mana -> xả skill, rồi reset mana
+        if (currentMana >= maxMana && maxMana > 0)
+        {
+            CastSkill(target);
+            currentMana = 0;
+        }
+        else
+        {
+            BasicAttack(target);
+            GainMana(manaPerAttack);
+        }
+    }
+
+    // ĐÁNH THƯỜNG
+    void BasicAttack(Unit target)
+    {
+        if (target == null) return;
+
+        if (isRanged && basicProjectilePrefab != null)
+        {
+            // vị trí spawn đạn (khoảng tầm ngực)
+            Vector3 spawnPos = transform.position + Vector3.up * 1.2f;
+
+            GameObject go = Instantiate(basicProjectilePrefab, spawnPos, Quaternion.identity);
+            Projectile proj = go.GetComponent<Projectile>();
+            if (proj != null)
+            {
+                proj.Init(target, attackDamage, projectileSpeed);
+            }
+        }
+        else
+        {
+            // melee: trừ máu trực tiếp
+            target.TakeDamage(attackDamage);
+        }
+    }
+
+    // SKILL KHI ĐỦ MANA
+    void CastSkill(Unit target)
+    {
+        if (activeSkill == null)
+        {
+            Debug.LogWarning($"{unitName} không có skill!");
+            return;
+        }
+
+        activeSkill.Execute(this, target);
     }
 
     public void TakeDamage(int amount)
     {
         currentHP -= amount;
+
+        // nhận dame thì được cộng mana
+        GainMana(manaPerHitTaken);
+
         if (currentHP <= 0)
         {
             currentHP = 0;
@@ -258,7 +380,9 @@ public class Unit : MonoBehaviour
             if (currentTile.reservedUnit == this)
                 currentTile.reservedUnit = null;
         }
-
+        // Rơi gem (chỉ quái mới rơi)
+        if (team == Team.Enemy)
+            GetComponent<LootOnDeath>()?.TryDrop();
         if (moveTargetTile != null && moveTargetTile.reservedUnit == this)
         {
             moveTargetTile.reservedUnit = null;
