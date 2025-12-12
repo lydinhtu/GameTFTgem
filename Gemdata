@@ -1,0 +1,12 @@
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Game/Gem Data", fileName = "GemData")]
+public class GemData : ScriptableObject
+{
+    public string gemId = "GEM_01";
+    public string displayName = "Gem";
+    public Sprite icon;
+
+    [Tooltip("Prefab gem rơi ra ngoài map (có GemPickup + Collider2D trigger).")]
+    public GameObject worldPrefab;
+}
