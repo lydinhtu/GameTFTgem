@@ -60,7 +60,7 @@ public class BenchManager : MonoBehaviour
 
             // Vị trí ô bench = ô board + lùi xuống dưới 1 tileSize
             Vector3 basePos = boardTile.transform.position;
-            float benchOffset = 1f;
+            float benchOffset = 0.5f;
             Vector3 pos = basePos + new Vector3(0f, 0f, -tileSize - benchOffset);
 
 
