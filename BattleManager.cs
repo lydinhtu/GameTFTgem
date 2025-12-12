@@ -254,11 +254,17 @@ public class BattleManager : MonoBehaviour
 
             // Hết round rồi, không còn trong trạng thái combat
             unit.isInBattle = false;
-
-            // HỒI FULL MÁU – CHỖ NÀY GIẢ ĐỊNH BẠN CÓ currentHP / maxHP
-            // Nếu tên biến khác thì bạn đổi lại cho đúng.
+            // HỒI FULL MÁU & MANA (dùng field sẵn có trên Unit)
             unit.currentHP = unit.maxHP;
+            unit.currentMana = 0;
+            if (!unit.gameObject.activeSelf)
+                unit.gameObject.SetActive(true);
 
+            // Nếu trong Unit có biến attackSpeed / attackCooldown thì tính lại:
+            if (unit.attackSpeed > 0f)
+                unit.attackCooldown = 1f / unit.attackSpeed;
+            else
+                unit.attackCooldown = 999f;
             // ĐƯA VỀ LẠI TILE BAN ĐẦU
             unit.SetTile(startTile);
         }
