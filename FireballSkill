@@ -1,0 +1,28 @@
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Skills/Fireball")]
+public class FireballSkill : SkillData
+{
+    public override void Execute(Unit caster, Unit target)
+    {
+        if (projectilePrefab != null)
+        {
+            Vector3 spawnPos = caster.transform.position + Vector3.up * 1.2f;
+
+            GameObject go = Instantiate(projectilePrefab, spawnPos, Quaternion.identity);
+
+            Projectile proj = go.GetComponent<Projectile>();
+            if (proj != null)
+            {
+                int dmg = Mathf.RoundToInt(caster.attackDamage * damageMultiplier);
+                proj.Init(target, dmg, projectileSpeed);
+            }
+        }
+        else
+        {
+            // fallback: không có projectile thì dame thẳng
+            int dmg = Mathf.RoundToInt(caster.attackDamage * damageMultiplier);
+            target.TakeDamage(dmg);
+        }
+    }
+}
