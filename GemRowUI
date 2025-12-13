@@ -1,0 +1,21 @@
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class GemRowUI : MonoBehaviour
+{
+    public Image icon;
+    public TMP_Text countText;
+
+    string gemId;
+
+    public void Bind(GemData gem, int count)
+    {
+        gemId = gem.gemId;
+
+        if (icon != null) icon.sprite = gem.icon;
+        if (countText != null) countText.text = "x" + count;
+    }
+
+    public string GemId => gemId;
+}
