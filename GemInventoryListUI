@@ -1,0 +1,70 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class GemInventoryListUI : MonoBehaviour
+{
+    public Transform content;
+    public GemRowUI rowPrefab;
+
+    private readonly Dictionary<string, GemRowUI> rows = new();
+    private Coroutine bindRoutine;
+
+    void OnEnable()
+    {
+        if (bindRoutine != null) StopCoroutine(bindRoutine);
+        bindRoutine = StartCoroutine(BindWhenReady());
+    }
+
+    IEnumerator BindWhenReady()
+    {
+        // đợi InventoryManager spawn / Awake xong
+        while (InventoryManager.I == null)
+            yield return null;
+
+        InventoryManager.I.OnGemChanged += OnGemChanged;
+
+        RebuildFromInventory(); // rebuild sau khi đã có manager
+    }
+
+    void OnDisable()
+    {
+        if (bindRoutine != null) StopCoroutine(bindRoutine);
+        bindRoutine = null;
+
+        if (InventoryManager.I != null)
+            InventoryManager.I.OnGemChanged -= OnGemChanged;
+    }
+
+    void OnGemChanged(GemData gem, int newCount)
+    {
+        if (gem == null) return;
+
+        if (!rows.TryGetValue(gem.gemId, out var row) || row == null)
+        {
+            row = Instantiate(rowPrefab, content);
+            rows[gem.gemId] = row;
+        }
+
+        row.Bind(gem, newCount);
+    }
+
+    void RebuildFromInventory()
+    {
+        foreach (Transform child in content) Destroy(child.gameObject);
+        rows.Clear();
+
+        if (InventoryManager.I == null) return;
+
+        foreach (var kv in InventoryManager.I.GetAllCounts())
+        {
+            var gem = InventoryManager.I.GetGemData(kv.Key);
+            if (gem == null) continue;
+
+            var row = Instantiate(rowPrefab, content);
+            row.Bind(gem, kv.Value);
+            rows[kv.Key] = row;
+        }
+    }
+}
+ 
