@@ -1,40 +1,28 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class LootOnDeath : MonoBehaviour
 {
-    [Range(0f, 1f)] public float dropChance = 1f;
-    public GemData gemToDrop;
-    public int amount = 1;
-
-    [Header("Throw")]
-    public float throwForce = 3f;      // lực văng
-    public float upForce = 1.5f;       // văng lên nhẹ
-    public float randomRadius = 0.2f;  // lệch vị trí spawn
+    public List<LootEntry> lootTable = new List<LootEntry>();
 
     public void TryDrop()
     {
-        Debug.Log("[LootOnDeath] TryDrop CALLED on: " + gameObject.name);
+        if (lootTable == null || lootTable.Count == 0) return;
 
-        if (gemToDrop == null)
+        foreach (var e in lootTable)
         {
-            Debug.LogError("[LootOnDeath] gemToDrop is NULL");
-            return;
+            if (e == null || e.gem == null || e.gem.worldPrefab == null) continue;
+            if (Random.value > e.chance) continue;
+
+            int amount = Random.Range(e.minAmount, e.maxAmount + 1);
+
+            GameObject go = Instantiate(e.gem.worldPrefab, transform.position, Quaternion.identity);
+
+            var gw = go.GetComponent<GemWorld>();
+            if (gw == null) gw = go.AddComponent<GemWorld>();
+
+            gw.gem = e.gem;
+            gw.amount = amount;
         }
-
-        if (gemToDrop.worldPrefab == null)
-        {
-            Debug.LogError("[LootOnDeath] worldPrefab is NULL in GemData: " + gemToDrop.name);
-            return;
-        }
-
-        float r = Random.value;
-        Debug.Log("[LootOnDeath] roll=" + r + " chance=" + dropChance);
-
-        if (r > dropChance) return;
-
-        Vector3 spawnPos = transform.position;
-        Debug.Log("[LootOnDeath] SPAWN at " + spawnPos);
-
-        Instantiate(gemToDrop.worldPrefab, spawnPos, Quaternion.identity);
     }
 }
