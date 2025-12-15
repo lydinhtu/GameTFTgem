@@ -42,6 +42,21 @@ public class Unit : MonoBehaviour
     [HideInInspector] public float attackCooldown;
     [Header("Skill System")]
     public SkillData activeSkill;
+    [Header("Skill")]
+    public SkillData defaultSkill;   // skill gốc của tướng (khi không có gem)
+    private SkillData gemSkill;      // skill nhận từ gem (khi gắn gem)
+
+    public void SetGemSkill(SkillData skill)
+    {
+        gemSkill = skill;
+        activeSkill = skill; // ✅ gem override luôn skill đang dùng
+        Debug.Log($"[Unit] {unitName} nhận gem skill: {(skill ? skill.skillName : "NULL")}");
+    }
+
+    public SkillData GetCurrentSkill()
+    {
+        return gemSkill != null ? gemSkill : defaultSkill;
+    }
     [Header("Vị trí")]
     // offset thêm nếu muốn cho model nổi/chìm so với mặt tile
     public float heightOffsetY = 0f;
